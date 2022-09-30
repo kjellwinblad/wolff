@@ -182,7 +182,7 @@ do_init(#{client_id := ClientId,
                          max_total_bytes => MaxTotalBytes
                         }),
   %% The initial connect attempt is made by the caller (wolff_producers.erl)
-  %% If succeeded, `Conn' is a pid (but it may as well dead by now),
+  %% If succeeded, `Conn' is a pid (but it may as well be dead by now),
   %% if failed, it's a `term()' to indicate the failure reason.
   %% Send it to self regardless of failure, retry timer should be started
   %% when the message is received (same handling as in when `DOWN' message is
@@ -219,6 +219,7 @@ handle_info(?SEND_REQ(_, Batch, _) = Call, #{client_id := ClientId,
   {Calls, Cnt, Oct} = collect_send_calls([Call], 1, batch_bytes(Batch), Limit),
   ok = wolff_stats:recv(ClientId, Topic, Partition, #{cnt => Cnt, oct => Oct}),
   wolff_metrics:queuing_inc(Config),
+  wolff_metrics:batching_inc(Config),
   St1 = enqueue_calls(Calls, St0),
   St = maybe_send_to_kafka(St1),
   {noreply, St};
@@ -366,7 +367,7 @@ send_to_kafka(#{sent_reqs := Sent,
                             required_acks := RequiredAcks,
                             ack_timeout := AckTimeout,
                             compression := Compression
-                           },
+                           } = Config,
                 conn := Conn,
                 produce_api_vsn := Vsn,
                 topic := Topic,
@@ -386,6 +387,7 @@ send_to_kafka(#{sent_reqs := Sent,
                               }),
   St1 = St0#{replayq := NewQ, ?linger_expire_timer := false},
   NewSent = ?sent_req(Req, QAckRef, Calls),
+  wolff_metrics:inflight_inc(Config, erlang:length(Calls)),
   St2 = St1#{sent_reqs := queue:in(NewSent, Sent),
              sent_reqs_count := SentCount + 1
             },
@@ -462,13 +464,15 @@ do_handle_kafka_ack(Ref, BaseOffset,
                     #{sent_reqs := SentReqs,
                       sent_reqs_count := SentReqsCount,
                       pending_acks := PendingAcks,
-                      replayq := Q
+                      replayq := Q,
+                      config := Config
                      } = St) ->
   case queue:peek(SentReqs) of
     {value, ?sent_req(#kpro_req{ref = Ref}, Q_AckRef, Calls)} ->
       ok = replayq:ack(Q, Q_AckRef),
       {{value, _}, NewSentReqs} = queue:out(SentReqs),
       NewPendingAcks = evaluate_pending_ack_funs(PendingAcks, Calls, BaseOffset),
+      wolff_metrics:inflight_inc(Config, -1),
       St#{sent_reqs := NewSentReqs,
           sent_reqs_count := SentReqsCount - 1,
           pending_acks := NewPendingAcks
