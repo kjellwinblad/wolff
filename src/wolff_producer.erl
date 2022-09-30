@@ -47,8 +47,7 @@
                       max_send_ahead |
                       compression |
                       drop_if_highmem |
-                      metrics_module |
-                      metrics_data.
+                      telemetry_meta_data.
 
 -type config() :: #{replayq_dir := string(),
                     replayq_max_total_bytes => pos_integer(),
@@ -61,8 +60,7 @@
                     max_send_ahead => non_neg_integer(),
                     compression => kpro:compress_option(),
                     drop_if_highmem => boolean(),
-                    metrics_module => module(),
-                    metrics_data => term()
+                    telemetry_meta_data => term()
                    }.
 
 -define(no_timer, no_timer).
@@ -220,7 +218,7 @@ handle_info(?SEND_REQ(_, Batch, _) = Call, #{client_id := ClientId,
                                             } = St0) ->
   {Calls, Cnt, Oct} = collect_send_calls([Call], 1, batch_bytes(Batch), Limit),
   ok = wolff_stats:recv(ClientId, Topic, Partition, #{cnt => Cnt, oct => Oct}),
-  (metrics_module(Config)):queuing_inc(metrics_data(Config)),
+  wolff_metrics:queuing_inc(Config),
   St1 = enqueue_calls(Calls, St0),
   St = maybe_send_to_kafka(St1),
   {noreply, St};
@@ -735,13 +733,6 @@ get_overflow_log_state() ->
 put_overflow_log_state(Ts, Cnt, Acc) ->
   put(?buffer_overflow_discarded, #{last_ts => Ts, last_cnt => Cnt, acc_cnt => Acc}),
   ok.
-
-metrics_module(Config) ->
-    maps:get(metrics_module, Config, wolff_metrics_counters).
-
-metrics_data(Config) ->
-    maps:get(metrics_data, Config, data).
-
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
