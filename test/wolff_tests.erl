@@ -1,6 +1,6 @@
 -module(wolff_tests).
 
--export([ack_cb/4]).
+-export([ack_cb/4, handle_telemetry_event/4]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("lc/include/lc.hrl").
@@ -34,6 +34,7 @@ ack_cb(Partition, Offset, Self, Ref) ->
   ok.
 
 send_test() ->
+  install_event_logging(?FUNCTION_NAME),
   ClientCfg = client_config(),
   {ok, Client} = start_client(<<"client-1">>, ?HOSTS, ClientCfg),
   ProducerCfg = #{partitioner => fun(_, _) -> 0 end},
@@ -54,7 +55,8 @@ send_test() ->
       erlang:error(timeout)
   end,
   ok = wolff:stop_producers(Producers),
-  ok = stop_client(Client).
+  ok = stop_client(Client),
+  deinstall_event_logging(?FUNCTION_NAME).
 
 %% Test with single message which has the maximum payload below limit
 %% it should be accepted by Kafka, otherwise message_too_large
@@ -510,3 +512,49 @@ start_kafka_2() ->
   Cmd = "docker start wolff-kafka-2",
   os:cmd(Cmd),
   ok.
+
+handle_telemetry_event(
+    EventId,
+    MetricsData,
+    MetaData,
+    _
+) ->
+    ct:pal("<<< telemetry event >>>\n[event id]: ~p\n[metrics data]: ~p\n[meta data]: ~p\n",
+           [EventId, MetricsData, MetaData]).
+
+telemetry_id() ->
+    <<"emqx-bridge-kafka-producer-telemetry-handler">>.
+
+install_event_logging(TestCaseName) ->
+    ct:pal("=== Starting event logging for test case ~p ===\n", [TestCaseName]),
+    ok = application:ensure_started(telemetry),
+    %% Attach event handlers for Kafka telemetry events. If a handler with the
+    %% handler id already exists, the attach_many function does nothing
+    telemetry:attach_many(
+        %% unique handler id
+        telemetry_id(),
+        [
+            [wolff, batching],
+            [wolff, dropped],
+            [wolff, dropped_other],
+            [wolff, dropped_queue_full],
+            [wolff, dropped_queue_not_enabled],
+            [wolff, dropped_resource_not_found],
+            [wolff, dropped_resource_stopped],
+            [wolff, matched],
+            [wolff, queuing],
+            [wolff, retried],
+            [wolff, failed],
+            [wolff, inflight],
+            [wolff, retried_failed],
+            [wolff, retried_success],
+            [wolff, success]
+        ],
+        fun wolff_tests:handle_telemetry_event/4,
+        []
+    ).
+
+deinstall_event_logging(TestCaseName) ->
+    telemetry:detach(telemetry_id()),
+    ct:pal("=== Stopping event logging for test case ~p ===\n", [TestCaseName]).
+
