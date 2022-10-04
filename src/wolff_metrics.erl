@@ -20,9 +20,6 @@
     success_inc/2
 ]).
 
-%%    matched_inc/1,
-%%    matched_inc/2,
-
 %% Gauges (value can go both up and down):
 %% --------------------------------------
 
@@ -59,17 +56,6 @@ dropped_queue_full_inc(Config, Val) ->
     telemetry:execute([wolff, dropped_queue_full],
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
-
-%% @doc Count of this bridge is matched and queried.
-%% TODO Move to higher level. Maybe should not be done in resource worker
-% matched_inc(Config) ->
-%     matched_inc(Config, 1).
-
-% matched_inc(Config, Val) ->
-%     telemetry:execute([wolff, matched],
-%                       #{counter_inc => Val},
-%                       telemetry_meta_data(Config)).
-
 
 %% @doc Times of retried.
 retried_inc(Config) ->
