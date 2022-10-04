@@ -191,7 +191,6 @@ Start Kafka in docker containers from dokcer-compose.yml in this repo.
 docker-compose up -d
 ```
 
-
 ## License
 
 Apache License Version 2.0

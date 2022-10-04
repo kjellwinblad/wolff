@@ -65,13 +65,6 @@
 
 -define(no_timer, no_timer).
 -define(reconnect, reconnect).
-
-% -type sent_req() :: #{request => term(),
-%                       q_ack_ref => term(),
-%                       calls => [term()],
-%                       batch_size => pos_integer(),
-%                       attempts => pos_integer()}.
-
 -define(linger_expire, linger_expire).
 -define(linger_expire_timer, linger_expire_timer).
 -define(DEFAULT_REPLAYQ_SEG_BYTES, 10 * 1024 * 1024).
@@ -413,8 +406,8 @@ send_to_kafka(#{sent_reqs := Sent,
   maybe_send_to_kafka(St3).
 
 %% when require no acks do not add to sent_reqs and ack caller immediately
-maybe_fake_kafka_ack(#kpro_req{no_ack = true}, St) ->
-  do_handle_kafka_ack(?UNKNOWN_OFFSET, St);
+maybe_fake_kafka_ack(#kpro_req{no_ack = true, ref = Ref}, St) ->
+  do_handle_kafka_ack(Ref, ?UNKNOWN_OFFSET, St);
 maybe_fake_kafka_ack(_Req, St) -> St.
 
 is_send_ahead_allowed(#{config := #{max_send_ahead := Max},
@@ -471,7 +464,7 @@ handle_kafka_ack(#kpro_rsp{api = produce,
                 attempts := Attempts}} ->
           case ErrorCode =:= ?no_error of
               true ->
-                  do_handle_kafka_ack(BaseOffset, St);
+                  do_handle_kafka_ack(Ref, BaseOffset, St);
               false ->
                   AttemptedBefore = Attempts > 1,
                   inc_sent_failed(Config, BatchSize, AttemptedBefore),
@@ -486,26 +479,34 @@ handle_kafka_ack(#kpro_rsp{api = produce,
           ok 
   end.
 
-do_handle_kafka_ack(BaseOffset,
+do_handle_kafka_ack(Ref,
+                    BaseOffset,
                     #{sent_reqs := SentReqs,
                       sent_reqs_count := SentReqsCount,
                       pending_acks := PendingAcks,
                       replayq := Q,
                       config := Config
                      } = St) ->
-    {{value, #{batch_size := BatchSize,
-               q_ack_ref := Q_AckRef,
-               calls := Calls,
-               attempts := Attempts}}, NewSentReqs} = queue:out(SentReqs),
-    ok = replayq:ack(Q, Q_AckRef),
-    NewPendingAcks = evaluate_pending_ack_funs(PendingAcks, Calls, BaseOffset),
-    AttemptedBefore = Attempts > 1,
-    inc_sent_success(Config, BatchSize, AttemptedBefore),
-    wolff_metrics:inflight_change(Config, -BatchSize),
-    St#{sent_reqs := NewSentReqs,
-        sent_reqs_count := SentReqsCount - 1,
-        pending_acks := NewPendingAcks
-       }.
+    case queue:peek(SentReqs) of
+        {value, #{request := #kpro_req{ref = Ref}}} ->
+            {{value, #{request := #kpro_req{ref = Ref},
+                       batch_size := BatchSize,
+                       q_ack_ref := Q_AckRef,
+                       calls := Calls,
+                       attempts := Attempts}}, NewSentReqs} = queue:out(SentReqs),
+            ok = replayq:ack(Q, Q_AckRef),
+            NewPendingAcks = evaluate_pending_ack_funs(PendingAcks, Calls, BaseOffset),
+            AttemptedBefore = Attempts > 1,
+            inc_sent_success(Config, BatchSize, AttemptedBefore),
+            wolff_metrics:inflight_change(Config, -BatchSize),
+            St#{sent_reqs := NewSentReqs,
+                sent_reqs_count := SentReqsCount - 1,
+                pending_acks := NewPendingAcks
+               };
+        _ ->
+            %% stale ack
+            St
+    end.
 
 %% @private This function is called in below scenarios
 %% * Failed to connect any of the brokers

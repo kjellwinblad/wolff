@@ -39,7 +39,7 @@ inflight_change(Config, Val) ->
 %% Counters (value can only got up):
 %% --------------------------------------
 
-%% @doc Count of messages dropped.
+%% @doc Count of messages dropped
 dropped_inc(Config) ->
     dropped_inc(Config, 1).
 
@@ -48,7 +48,7 @@ dropped_inc(Config, Val) ->
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
 
-%% @doc Count of messages dropped due to the queue is full.
+%% @doc Count of messages dropped because the queue was full
 dropped_queue_full_inc(Config) ->
     dropped_queue_full_inc(Config, 1).
 
@@ -57,7 +57,7 @@ dropped_queue_full_inc(Config, Val) ->
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
 
-%% @doc Times of retried.
+%% @doc The number of time message sends have been retried
 retried_inc(Config) ->
     retried_inc(Config, 1).
 
@@ -66,7 +66,7 @@ retried_inc(Config, Val) ->
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
 
-%% @doc Count of messages that sent failed.
+%% @doc Count of message sends that have failed
 failed_inc(Config) ->
     failed_inc(Config, 1).
 
@@ -75,7 +75,7 @@ failed_inc(Config, Val) ->
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
 
-%%% @doc Count of messages that sent failed.
+%%% @doc Count of message sends that have failed after having been retried
 retried_failed_inc(Config) ->
     retried_failed_inc(Config, 1).
 
@@ -84,7 +84,7 @@ retried_failed_inc(Config, Val) ->
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
 
- %% @doc Count messages that where sucessfully sent after a fail
+ %% @doc Count messages that were sucessfully sent after at least one retry
  retried_success_inc(Config) ->
      retried_success_inc(Config, 1).
 
@@ -93,7 +93,7 @@ retried_failed_inc(Config, Val) ->
                        #{counter_inc => Val},
                        telemetry_meta_data(Config)).
 
-%% @doc Count of messages that sent successfully.
+%% @doc Count of messages that have been sent successfully
 success_inc(Config) ->
     success_inc(Config, 1).
 
