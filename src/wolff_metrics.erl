@@ -2,28 +2,14 @@
 
 
 -export([
-    batching_inc/1,
-    batching_inc/2,
+    inflight_change/2,
+    queuing_change/2,
     dropped_inc/1,
     dropped_inc/2,
-    dropped_other_inc/1,
-    dropped_other_inc/2,
     dropped_queue_full_inc/1,
     dropped_queue_full_inc/2,
-    dropped_queue_not_enabled_inc/1,
-    dropped_queue_not_enabled_inc/2,
-    dropped_resource_not_found_inc/1,
-    dropped_resource_not_found_inc/2,
-    dropped_resource_stopped_inc/1,
-    dropped_resource_stopped_inc/2,
     failed_inc/1,
     failed_inc/2,
-    inflight_inc/1,
-    inflight_inc/2,
-    matched_inc/1,
-    matched_inc/2,
-    queuing_inc/1,
-    queuing_inc/2,
     retried_inc/1,
     retried_inc/2,
     retried_failed_inc/1,
@@ -34,16 +20,27 @@
     success_inc/2
 ]).
 
+%%    matched_inc/1,
+%%    matched_inc/2,
 
-%% @doc Count of messages that are currently accumulated in memory waiting for
-%% sending in one batch. TODO gage
-% batching_inc(Config) ->
-%     batching_inc(Config, 1).
+%% Gauges (value can go both up and down):
+%% --------------------------------------
 
-% batching_inc(Config, Val) ->
-%     telemetry:execute([wolff, batching],
-%                       #{counter_inc => Val},
-%                       telemetry_meta_data(Config)).
+%% @doc Count of messages that are currently queuing. [Gauge]
+queuing_change(Config, Val) ->
+    telemetry:execute([wolff, queuing],
+                      #{counter_inc => Val},
+                      telemetry_meta_data(Config)).
+
+%% @doc Count of messages that were sent asynchronously but ACKs are not
+%% received. [Gauge]
+inflight_change(Config, Val) ->
+    telemetry:execute([wolff, inflight],
+                      #{counter_inc => Val},
+                      telemetry_meta_data(Config)).
+
+%% Counters (value can only got up):
+%% --------------------------------------
 
 %% @doc Count of messages dropped.
 dropped_inc(Config) ->
@@ -54,15 +51,6 @@ dropped_inc(Config, Val) ->
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
 
-% %% @doc Count of messages dropped due to other reasons.
-% dropped_other_inc(Config) ->
-%     dropped_other_inc(Config, 1).
-
-% dropped_other_inc(Config, Val) ->
-%     telemetry:execute([wolff, dropped_other],
-%                       #{counter_inc => Val},
-%                       telemetry_meta_data(Config)).
-
 %% @doc Count of messages dropped due to the queue is full.
 dropped_queue_full_inc(Config) ->
     dropped_queue_full_inc(Config, 1).
@@ -71,33 +59,6 @@ dropped_queue_full_inc(Config, Val) ->
     telemetry:execute([wolff, dropped_queue_full],
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
-
-% %% @doc Count of messages dropped due to the queue is not enabled.
-% dropped_queue_not_enabled_inc(Config) ->
-%     dropped_queue_not_enabled_inc(Config, 1).
-
-% dropped_queue_not_enabled_inc(Config, Val) ->
-%     telemetry:execute([wolff, dropped_queue_not_enabled],
-%                       #{counter_inc => Val},
-%                       telemetry_meta_data(Config)).
-
-% %% @doc Count of messages dropped due to the resource is not found.
-% dropped_resource_not_found_inc(Config) ->
-%     dropped_resource_not_found_inc(Config, 1).
-
-% dropped_resource_not_found_inc(Config, Val) ->
-%     telemetry:execute([wolff, dropped_resource_not_found],
-%                       #{counter_inc => Val},
-%                       telemetry_meta_data(Config)).
-
-% %% @doc Count of messages dropped due to the resource is stopped.
-% dropped_resource_stopped_inc(Config) ->
-%     dropped_resource_stopped_inc(Config, 1).
-
-% dropped_resource_stopped_inc(Config, Val) ->
-%     telemetry:execute([wolff, dropped_resource_stopped],
-%                       #{counter_inc => Val},
-%                       telemetry_meta_data(Config)).
 
 %% @doc Count of this bridge is matched and queried.
 %% TODO Move to higher level. Maybe should not be done in resource worker
@@ -109,14 +70,6 @@ dropped_queue_full_inc(Config, Val) ->
 %                       #{counter_inc => Val},
 %                       telemetry_meta_data(Config)).
 
-%% @doc Count of messages that are currently queuing.
-queuing_inc(Config) ->
-    queuing_inc(Config, 1).
-
-queuing_inc(Config, Val) ->
-    telemetry:execute([wolff, queuing],
-                      #{counter_inc => Val},
-                      telemetry_meta_data(Config)).
 
 %% @doc Times of retried.
 retried_inc(Config) ->
@@ -128,7 +81,6 @@ retried_inc(Config, Val) ->
                       telemetry_meta_data(Config)).
 
 %% @doc Count of messages that sent failed.
-%% TODO Skip for now discuss with Xinyu
 failed_inc(Config) ->
     failed_inc(Config, 1).
 
@@ -137,36 +89,23 @@ failed_inc(Config, Val) ->
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
 
-%% @doc Count of messages that were sent asynchronously but ACKs are not
-%% received. TODO gage
-%% Size of Sent queue
-inflight_inc(Config) ->
-    inflight_inc(Config, 1).
+%%% @doc Count of messages that sent failed.
+retried_failed_inc(Config) ->
+    retried_failed_inc(Config, 1).
 
-inflight_inc(Config, Val) ->
-    telemetry:execute([wolff, inflight],
+retried_failed_inc(Config, Val) ->
+    telemetry:execute([wolff, retried_failed],
                       #{counter_inc => Val},
                       telemetry_meta_data(Config)).
 
-%% Difficult to support with hot upgrade (do we need it @Xinyu?) Can be fixed now with additional info
-%%% @doc Count of messages that sent failed.
-%%% Not supported
-%retried_failed_inc(Config) ->
-%    retried_failed_inc(Config, 1).
+ %% @doc Count messages that where sucessfully sent after a fail
+ retried_success_inc(Config) ->
+     retried_success_inc(Config, 1).
 
-%retried_failed_inc(Config, Val) ->
-%    telemetry:execute([wolff, retried_failed],
-%                      #{counter_inc => Val},
-%                      telemetry_meta_data(Config)).
-
-% %% @doc Count messages that where sucessfully sent after a fail
-% retried_success_inc(Config) ->
-%     retried_success_inc(Config, 1).
-
-% retried_success_inc(Config, Val) ->
-%     telemetry:execute([wolff, retried_success],
-%                       #{counter_inc => Val},
-%                       telemetry_meta_data(Config)).
+ retried_success_inc(Config, Val) ->
+     telemetry:execute([wolff, retried_success],
+                       #{counter_inc => Val},
+                       telemetry_meta_data(Config)).
 
 %% @doc Count of messages that sent successfully.
 success_inc(Config) ->
