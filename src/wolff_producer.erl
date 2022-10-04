@@ -66,11 +66,11 @@
 -define(no_timer, no_timer).
 -define(reconnect, reconnect).
 
--type sent_req() :: #{request => term(),
-                      q_ack_ref => term(),
-                      calls => [term()],
-                      batch_size => pos_integer(),
-                      attempts => pos_integer()}.
+% -type sent_req() :: #{request => term(),
+%                       q_ack_ref => term(),
+%                       calls => [term()],
+%                       batch_size => pos_integer(),
+%                       attempts => pos_integer()}.
 
 -define(linger_expire, linger_expire).
 -define(linger_expire_timer, linger_expire_timer).
@@ -220,14 +220,14 @@ handle_info(?linger_expire, St) ->
 handle_info(?SEND_REQ(_, Batch, _) = Call, #{client_id := ClientId,
                                              topic := Topic,
                                              partition := Partition,
-                                             config := #{max_batch_bytes := Limit} = Config
+                                             config := #{max_batch_bytes := Limit}
                                             } = St0) ->
   {Calls, Cnt, Oct} = collect_send_calls([Call], 1, batch_bytes(Batch), Limit),
   ok = wolff_stats:recv(ClientId, Topic, Partition, #{cnt => Cnt, oct => Oct}),
   St1 = enqueue_calls(Calls, St0),
   St = maybe_send_to_kafka(St1),
   {noreply, St};
-handle_info({msg, Conn, Rsp}, #{conn := Conn, sent_reqs := Reqs, config := Config} = St0) ->
+handle_info({msg, Conn, Rsp}, #{conn := Conn} = St0) ->
   try handle_kafka_ack(Rsp, St0) of
     St1 ->
       St = maybe_send_to_kafka(St1),
@@ -343,7 +343,6 @@ maybe_send_to_kafka(#{conn := Conn, replayq := Q} = St) ->
       %% maybe the connection was closed after ideling
       %% re-connect is triggered immediately if this
       %% is the first attempt
-      
       ensure_delayed_reconnect(St, no_delay_for_first_attempt)
   end.
 
@@ -367,7 +366,6 @@ maybe_send_to_kafka_now(#{?linger_expire_timer := LTimer,
       St;
     false ->
       %% delay send, try to accumulate more into the batch
-      
       Ref = erlang:send_after(LingerTimeout, self(), ?linger_expire),
       St#{?linger_expire_timer := Ref}
   end.
@@ -415,8 +413,8 @@ send_to_kafka(#{sent_reqs := Sent,
   maybe_send_to_kafka(St3).
 
 %% when require no acks do not add to sent_reqs and ack caller immediately
-maybe_fake_kafka_ack(#kpro_req{no_ack = true, ref = Ref}, St) ->
-  do_handle_kafka_ack(Ref, ?UNKNOWN_OFFSET, St);
+maybe_fake_kafka_ack(#kpro_req{no_ack = true}, St) ->
+  do_handle_kafka_ack(?UNKNOWN_OFFSET, St);
 maybe_fake_kafka_ack(_Req, St) -> St.
 
 is_send_ahead_allowed(#{config := #{max_send_ahead := Max},
@@ -705,8 +703,7 @@ enqueue_calls(Calls, #{replayq := Q,
    handle_overflow(St0#{replayq := NewQ,
                         pending_acks := PendingAcks
                        },
-                   Overflow,
-                   Config0).
+                   Overflow).
 
 maybe_reply_queued(?SEND_REQ(?no_queued_reply, _, _)) -> ok;
 maybe_reply_queued(?SEND_REQ({Pid, Ref}, _, _)) -> erlang:send(Pid, {Ref, ?queued}).
@@ -717,14 +714,14 @@ eval_ack_cb(?ACK_CB({F, A}, Partition), BaseOffset) ->
   true = is_function(F, length(A) + 2),
   ok = erlang:apply(F, [Partition, BaseOffset | A]).
 
-handle_overflow(St, Overflow, Config) when Overflow =< 0 ->
-    ok = maybe_log_discard(St, 0, Config),
+handle_overflow(St, Overflow) when Overflow =< 0 ->
+    ok = maybe_log_discard(St, 0),
     St;
 handle_overflow(#{replayq := Q,
-                  pending_acks := PendingAcks
+                  pending_acks := PendingAcks,
+                  config := Config
                  } = St,
-                Overflow,
-                Config) ->
+                Overflow) ->
   {NewQ, QAckRef, Items} =
     replayq:pop(Q, #{bytes_limit => Overflow, count_limit => 999999999}),
   ok = replayq:ack(NewQ, QAckRef),
@@ -734,19 +731,19 @@ handle_overflow(#{replayq := Q,
   wolff_metrics:dropped_queue_full_inc(Config, FlatBatchSize),
   wolff_metrics:dropped_inc(Config, FlatBatchSize),
   wolff_metrics:queuing_change(Config, -FlatBatchSize),
-  ok = maybe_log_discard(St, length(Calls), Config),
+  ok = maybe_log_discard(St, length(Calls)),
   NewPendingAcks = evaluate_pending_ack_funs(PendingAcks, Calls, ?buffer_overflow_discarded),
   St#{replayq := NewQ, pending_acks := NewPendingAcks}.
 
 %% use process dictionary for upgrade without restart
-maybe_log_discard(St, Increment, Config) ->
+maybe_log_discard(St, Increment) ->
   Last = get_overflow_log_state(),
   #{last_cnt := LastCnt, acc_cnt := AccCnt} = Last,
   case LastCnt =:= AccCnt andalso Increment =:= 0 of
     true -> %% no change
       ok;
     false ->
-      maybe_log_discard(St, Increment, Last, Config)
+      maybe_log_discard(St, Increment, Last)
   end.
 
 maybe_log_discard(#{topic := Topic, partition := Partition},
@@ -780,7 +777,7 @@ inc_sent_failed(Config, NrOfFailedMsgs, true) ->
     wolff_metrics:retried_inc(Config, NrOfFailedMsgs),
     wolff_metrics:retried_failed_inc(Config, NrOfFailedMsgs);
 inc_sent_failed(Config, NrOfFailedMsgs, _HasSent) ->
-    emqx_resource_metrics:failed_inc(Config).
+    emqx_resource_metrics:failed_inc(Config, NrOfFailedMsgs).
 
 inc_sent_success(Config, NrOfFailedMsgs, true) ->
     wolff_metrics:success_inc(Config, NrOfFailedMsgs),
