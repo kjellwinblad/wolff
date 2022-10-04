@@ -774,14 +774,12 @@ put_overflow_log_state(Ts, Cnt, Acc) ->
 
 inc_sent_failed(Config, NrOfFailedMsgs, true) ->
     wolff_metrics:failed_inc(Config, NrOfFailedMsgs),
-    wolff_metrics:retried_inc(Config, NrOfFailedMsgs),
     wolff_metrics:retried_failed_inc(Config, NrOfFailedMsgs);
 inc_sent_failed(Config, NrOfFailedMsgs, _HasSent) ->
     emqx_resource_metrics:failed_inc(Config, NrOfFailedMsgs).
 
 inc_sent_success(Config, NrOfFailedMsgs, true) ->
     wolff_metrics:success_inc(Config, NrOfFailedMsgs),
-    wolff_metrics:retried_inc(Config, NrOfFailedMsgs),
     wolff_metrics:retried_success_inc(Config, NrOfFailedMsgs);
 inc_sent_success(Config, NrOfFailedMsgs, _HasSent) ->
     wolff_metrics:success_inc(Config, NrOfFailedMsgs).

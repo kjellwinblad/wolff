@@ -1,6 +1,16 @@
 -module(wolff_tests).
 
--export([ack_cb/4, handle_telemetry_event/4]).
+-export([ack_cb/4]).
+
+%% Helper functions so they can be used in other test files
+-export([get_telemetry_seq/2,
+         handle_telemetry_event/4,
+         telemetry_id/0,
+         install_event_logging/1,
+         install_event_logging/3,
+         deinstall_event_logging/1,
+         print_telemetry_check/2]).
+
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("lc/include/lc.hrl").
@@ -596,6 +606,15 @@ start_kafka_2() ->
   os:cmd(Cmd),
   ok.
 
+%% Helper function that is useful when one wants to get code to check that the
+%% telemetry events are triggered correctly in a test case
+print_telemetry_check(Tab, Name) ->
+    erlang:display({'[__test_code_gen__]',Name}),
+    DispFlat = fun(X) -> erlang:display(erlang:binary_to_list(erlang:iolist_to_binary(X))) end,
+    lists:foreach(fun({Id, _List}) ->
+                          DispFlat(io_lib:format("~p = wolff_tests:get_telemetry_seq(CntrEventsTable, ~p),", [wolff_tests:get_telemetry_seq(Tab,Id), Id]))
+                  end, ets:tab2list(Tab)).
+
 get_telemetry_seq(Table, EventId) ->
     case ets:lookup(Table, EventId) of
        [] -> [];
@@ -638,7 +657,12 @@ install_event_logging(TestCaseName) ->
     install_event_logging(TestCaseName, none, true).
 
 install_event_logging(TestCaseName, EventRecordTable, LogEvents) ->
-    ct:pal("=== Starting event logging for test case ~p ===\n", [TestCaseName]),
+    case LogEvents of
+        true -> 
+            ct:pal("=== Starting event logging for test case ~p ===\n", [TestCaseName]);
+        false -> 
+            ok
+    end,
     ok = application:ensure_started(telemetry),
     %% Attach event handlers for Kafka telemetry events. If a handler with the
     %% handler id already exists, the attach_many function does nothing
